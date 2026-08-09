@@ -392,6 +392,9 @@ function App() {
           </button>
         )}
       </div>
+      <div className="credit">
+  Designed & Developed by <strong>HaRdIk</strong>
+</div>
     </div>
   );
 }

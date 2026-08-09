@@ -107,3 +107,13 @@ video {
     width: 90%;
   }
 }
+.credit {
+  margin-top: 35px;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.credit strong {
+  color: white;
+  font-weight: 600;
+}
