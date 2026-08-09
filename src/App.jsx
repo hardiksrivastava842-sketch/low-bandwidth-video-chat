@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
-const SIGNALING_SERVER = "ws://localhost:8080";
+const SIGNALING_SERVER = "wss://low-bandwidth-video-chat.onrender.com";
 
 function App() {
   const localVideoRef = useRef(null);

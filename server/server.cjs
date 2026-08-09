@@ -1,12 +1,23 @@
+const http = require("http");
 const WebSocket = require("ws");
 
+const PORT = process.env.PORT || 8080;
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/plain",
+  });
+
+  res.end("Signaling server is running");
+});
+
 const wss = new WebSocket.Server({
-  port: 8080,
+  server,
 });
 
 const rooms = new Map();
 
-console.log("Signaling server running on ws://localhost:8080");
+console.log(`Starting signaling server on port ${PORT}`);
 
 wss.on("connection", (socket) => {
   let currentRoom = null;
@@ -15,7 +26,6 @@ wss.on("connection", (socket) => {
     try {
       const data = JSON.parse(message);
 
-      // Join room
       if (data.type === "join") {
         currentRoom = data.room;
 
@@ -27,11 +37,8 @@ wss.on("connection", (socket) => {
 
         room.add(socket);
 
-        console.log(
-          `User joined room: ${currentRoom}`
-        );
+        console.log(`User joined room: ${currentRoom}`);
 
-        // Tell existing users that someone joined
         room.forEach((client) => {
           if (client !== socket) {
             client.send(
@@ -45,7 +52,6 @@ wss.on("connection", (socket) => {
         return;
       }
 
-      // Forward WebRTC messages
       if (currentRoom && rooms.has(currentRoom)) {
         const room = rooms.get(currentRoom);
 
@@ -73,4 +79,8 @@ wss.on("connection", (socket) => {
       rooms.delete(currentRoom);
     }
   });
-}); 
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Signaling server running on port ${PORT}`);
+});
