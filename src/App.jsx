@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const SIGNALING_SERVER = "wss://low-bandwidth-video-chat.onrender.com";
+const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY;
+
+let cachedIceServers = null;
 
 function App() {
   const localVideoRef = useRef(null);
@@ -49,76 +52,97 @@ function App() {
   // -----------------------------
   // Create WebRTC Connection
   // -----------------------------
-  const createPeerConnection = () => {
-    if (peerConnectionRef.current) {
-      return peerConnectionRef.current;
-    }
+ const createPeerConnection = async () => {
+  if (peerConnectionRef.current) {
+    return peerConnectionRef.current;
+  }
 
-    const peer = new RTCPeerConnection({
-      iceServers: [
+  // Metered TURN credentials / ICE servers
+  if (!cachedIceServers) {
+    try {
+      const response = await fetch(
+        `https://lowbandwidthvideochat.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `TURN credentials fetch failed: ${response.status}`
+        );
+      }
+
+      cachedIceServers = await response.json();
+
+      console.log("Metered ICE servers received:", cachedIceServers);
+    } catch (error) {
+      console.error("TURN server error:", error);
+
+      // TURN fail ho jaye to Google STUN se fallback
+      cachedIceServers = [
         {
           urls: "stun:stun.l.google.com:19302",
         },
-      ],
-    });
+      ];
+    }
+  }
 
-    // Local tracks add karo
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+  const peer = new RTCPeerConnection({
+    iceServers: cachedIceServers,
+  });
+
+  // Local tracks add karo
+  if (localStreamRef.current) {
+    localStreamRef.current.getTracks().forEach((track) => {
+      peer.addTrack(track, localStreamRef.current);
+    });
+  }
+
+  // Remote video receive
+  peer.ontrack = (event) => {
+    console.log("Remote stream received");
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = event.streams[0];
     }
 
-    // Remote video receive
-    peer.ontrack = (event) => {
-      console.log("Remote stream received");
+    setConnected(true);
+    setStatus("Connected");
+  };
 
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-      }
+  // ICE candidates
+  peer.onicecandidate = (event) => {
+    if (event.candidate && socketRef.current) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "ice-candidate",
+          candidate: event.candidate,
+        })
+      );
+    }
+  };
 
+  // Connection status
+  peer.onconnectionstatechange = () => {
+    console.log("WebRTC:", peer.connectionState);
+
+    if (peer.connectionState === "connected") {
       setConnected(true);
       setStatus("Connected");
-    };
+    }
 
-    // ICE candidates
-    peer.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: "ice-candidate",
-            candidate: event.candidate,
-          })
-        );
-      }
-    };
-
-    // Connection status
-    peer.onconnectionstatechange = () => {
-      console.log(
-        "WebRTC:",
-        peer.connectionState
-      );
-
-      if (peer.connectionState === "connected") {
-        setConnected(true);
-        setStatus("Connected");
-      }
-
-      if (
-        peer.connectionState === "disconnected" ||
-        peer.connectionState === "failed" ||
-        peer.connectionState === "closed"
-      ) {
-        setConnected(false);
-        setStatus("Disconnected");
-      }
-    };
-
-    peerConnectionRef.current = peer;
-
-    return peer;
+    if (
+      peer.connectionState === "disconnected" ||
+      peer.connectionState === "failed" ||
+      peer.connectionState === "closed"
+    ) {
+      setConnected(false);
+      setStatus("Disconnected");
+    }
   };
+
+  peerConnectionRef.current = peer;
+
+  return peer;
+};
 
   // -----------------------------
   // Connect to Room
@@ -177,7 +201,7 @@ function App() {
       if (data.type === "user-joined") {
         console.log("Other user joined");
 
-        const peer = createPeerConnection();
+        const peer = await createPeerConnection();
 
         const offer = await peer.createOffer();
 
@@ -197,7 +221,7 @@ function App() {
       // Receive Offer
       // -------------------------
       if (data.type === "offer") {
-        const peer = createPeerConnection();
+        const peer = awaitcreatePeerConnection();
 
         await peer.setRemoteDescription(
           new RTCSessionDescription(data.offer)
