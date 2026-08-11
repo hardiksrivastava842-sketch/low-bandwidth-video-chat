@@ -149,7 +149,7 @@ function App() {
   // -----------------------------
   const joinRoom = () => {
     if (!cameraOn) {
-      alert("Pehle Start Camera dabao.");
+      alert("Please enable your camera and microphone to continue.");
       return;
     }
 
