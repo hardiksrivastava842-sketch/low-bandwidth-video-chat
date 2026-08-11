@@ -154,7 +154,7 @@ function App() {
     }
 
     if (!roomId.trim()) {
-      alert("Room ID enter karo.");
+      alert("Enter room ID.");
       return;
     }
 
