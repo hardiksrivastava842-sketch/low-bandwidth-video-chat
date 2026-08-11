@@ -17,6 +17,7 @@ function App() {
   const pendingCandidatesRef = useRef([]);
 
   const [cameraOn, setCameraOn] = useState(false);
+  const [micOn, setMicOn] = useState(true);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
@@ -48,6 +49,17 @@ function App() {
       alert("Camera aur microphone ki permission allow karo.");
     }
   };
+  const toggleMute = () => {
+  if (!localStreamRef.current) return;
+
+  const audioTracks = localStreamRef.current.getAudioTracks();
+
+  audioTracks.forEach((track) => {
+    track.enabled = !track.enabled;
+  });
+
+  setMicOn(audioTracks.some((track) => track.enabled));
+};
 
   // -----------------------------
   // Create WebRTC Connection
@@ -406,6 +418,11 @@ function App() {
       </div>
 
       <div className="controls">
+      {cameraOn && (
+  <button onClick={toggleMute}>
+    {micOn ? "🎤 Mute" : "🔇 Unmute"}
+  </button>
+)}
         {!cameraOn ? (
           <button onClick={startCamera}>
             📹 Start Camera
