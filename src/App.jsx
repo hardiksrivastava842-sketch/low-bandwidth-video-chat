@@ -303,24 +303,34 @@ const copyRoomLink = async () => {
       // -------------------------
       // Someone joined
       // -------------------------
-      if (data.type === "user-joined") {
-        console.log("Other user joined");
+     if (data.type === "user-joined") {
+  console.log("Other user joined");
 
-        const peer = await createPeerConnection();
+  // Already negotiation chal rahi hai to dobara offer mat banao
+  if (peerConnectionRef.current) {
+    console.log("Peer connection already exists, ignoring duplicate join");
+    return;
+  }
 
-        const offer = await peer.createOffer();
+  const peer = await createPeerConnection();
 
-        await peer.setLocalDescription(offer);
+  if (peer.signalingState !== "stable") {
+  console.log("Ignoring duplicate offer:", peer.signalingState);
+  return;
+}
+  const offer = await peer.createOffer();
 
-        socket.send(
-          JSON.stringify({
-            type: "offer",
-            offer,
-          })
-        );
+  await peer.setLocalDescription(offer);
 
-        setStatus("Calling other person...");
-      }
+  socket.send(
+    JSON.stringify({
+      type: "offer",
+      offer,
+    })
+  );
+
+  setStatus("Calling other person...");
+}
 
       // -------------------------
       // Receive Offer
@@ -356,24 +366,34 @@ const copyRoomLink = async () => {
       // -------------------------
       // Receive Answer
       // -------------------------
-      if (data.type === "answer") {
-        const peer = peerConnectionRef.current;
+     if (data.type === "answer") {
+  const peer = peerConnectionRef.current;
 
-        if (!peer) return;
+  if (!peer) return;
 
-        await peer.setRemoteDescription(
-          new RTCSessionDescription(data.answer)
-        );
+  // Answer sirf local offer ke baad accept hoga
+  if (peer.signalingState !== "have-local-offer") {
+    console.log(
+      "Ignoring duplicate answer:",
+      peer.signalingState
+    );
+    return;
+  }
 
-        // Pending ICE candidates add karo
-        for (const candidate of pendingCandidatesRef.current) {
-          await peer.addIceCandidate(candidate);
-        }
+  await peer.setRemoteDescription(
+    new RTCSessionDescription(data.answer)
+  );
 
-        pendingCandidatesRef.current = [];
+  for (const candidate of pendingCandidatesRef.current) {
+    await peer.addIceCandidate(candidate);
+  }
 
-        setStatus("Connecting...");
-      }
+  pendingCandidatesRef.current = [];
+
+  setStatus("Connecting...");
+}
+
+    
 
       // -------------------------
       // ICE Candidate
@@ -551,5 +571,4 @@ useEffect(() => {
     </div>
   );
 }
-
 export default App;
