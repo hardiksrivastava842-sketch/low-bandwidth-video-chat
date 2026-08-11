@@ -21,6 +21,7 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
+  const [networkSpeed, setNetworkSpeed] = useState("Checking...");
 
   // -----------------------------
   // Start Camera
@@ -68,6 +69,67 @@ function App() {
   if (peerConnectionRef.current) {
     return peerConnectionRef.current;
   }
+  const startNetworkMonitor = (peer) => {
+  const interval = setInterval(async () => {
+    if (!peer || peer.connectionState !== "connected") {
+      setNetworkSpeed("Not connected");
+      return;
+    }
+
+    try {
+      const stats = await peer.getStats();
+
+      let inboundBytes = 0;
+      let timestamp = 0;
+
+      stats.forEach((report) => {
+        if (
+          report.type === "inbound-rtp" &&
+          report.kind === "video"
+        ) {
+          inboundBytes = report.bytesReceived || 0;
+          timestamp = report.timestamp || 0;
+        }
+      });
+
+      if (!peer._lastNetworkStats) {
+        peer._lastNetworkStats = {
+          bytes: inboundBytes,
+          timestamp,
+        };
+        return;
+      }
+
+      const previous = peer._lastNetworkStats;
+
+      const bytesDiff = inboundBytes - previous.bytes;
+      const timeDiff = (timestamp - previous.timestamp) / 1000;
+
+      if (timeDiff > 0 && bytesDiff >= 0) {
+        const bitsPerSecond = (bytesDiff * 8) / timeDiff;
+
+        if (bitsPerSecond >= 1000000) {
+          setNetworkSpeed(
+            `${(bitsPerSecond / 1000000).toFixed(1)} Mbps`
+          );
+        } else {
+          setNetworkSpeed(
+            `${Math.round(bitsPerSecond / 1000)} Kbps`
+          );
+        }
+      }
+
+      peer._lastNetworkStats = {
+        bytes: inboundBytes,
+        timestamp,
+      };
+    } catch (error) {
+      console.error("Network stats error:", error);
+    }
+  }, 2000);
+
+  peer._networkMonitor = interval;
+};
 
   // Metered TURN credentials / ICE servers
   if (!cachedIceServers) {
@@ -137,10 +199,10 @@ function App() {
     console.log("WebRTC:", peer.connectionState);
 
     if (peer.connectionState === "connected") {
-      setConnected(true);
-      setStatus("Connected");
-    }
-
+  setConnected(true);
+  setStatus("Connected");
+  startNetworkMonitor(peer);
+}
     if (
       peer.connectionState === "disconnected" ||
       peer.connectionState === "failed" ||
@@ -159,6 +221,37 @@ function App() {
   // -----------------------------
   // Connect to Room
   // -----------------------------
+  const generateRoomId = () => {
+  const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  setRoomId(newRoomId);
+
+  // URL me room ID bhi automatically set ho jayegi
+  window.history.replaceState(
+    {},
+    "",
+    `${window.location.pathname}?room=${newRoomId}`
+  );
+
+  setStatus("Room ID generated");
+};
+
+const copyRoomLink = async () => {
+  if (!roomId.trim()) {
+    alert("Please enter or generate a Room ID first.");
+    return;
+  }
+
+  const roomLink = `${window.location.origin}${window.location.pathname}?room=${roomId.trim()}`;
+
+  try {
+    await navigator.clipboard.writeText(roomLink);
+    setStatus("Room link copied");
+  } catch (error) {
+    console.error(error);
+    alert("Unable to copy the room link.");
+  }
+};
   const joinRoom = () => {
     if (!cameraOn) {
       alert("Please enable your camera and microphone to continue.");
@@ -349,6 +442,15 @@ function App() {
     setStatus("Call ended");
   };
 
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const roomFromUrl = params.get("room");
+
+  if (roomFromUrl) {
+    setRoomId(roomFromUrl);
+  }
+}, []);
+
   useEffect(() => {
     return () => {
       if (peerConnectionRef.current) {
@@ -372,22 +474,32 @@ function App() {
       <h1>Low Bandwidth Video Chat</h1>
 
       <div className="room-section">
-        <input
-          type="text"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          placeholder="Room ID"
-        />
+  <input
+    type="text"
+    value={roomId}
+    onChange={(e) => setRoomId(e.target.value)}
+    placeholder="Enter Room ID"
+  />
 
-        <button onClick={joinRoom}>
-          🔗 Join Room
-        </button>
-      </div>
+  <button onClick={generateRoomId}>
+    🎲 Generate Room ID
+  </button>
+
+  <button onClick={copyRoomLink}>
+    📋 Copy Link
+  </button>
+
+  <button onClick={joinRoom}>
+    🔗 Join Room
+  </button>
+</div>
 
       <div className="status">
         Status: <strong>{status}</strong>
       </div>
-
+<div className="network-speed">
+  📶 Network: <strong>{networkSpeed}</strong>
+</div>
       <div className="videos">
         <div className="video-box">
           <span>You</span>
