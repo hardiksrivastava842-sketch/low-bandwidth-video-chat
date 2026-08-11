@@ -221,7 +221,7 @@ function App() {
       // Receive Offer
       // -------------------------
       if (data.type === "offer") {
-        const peer = awaitcreatePeerConnection();
+        const peer = await createPeerConnection();
 
         await peer.setRemoteDescription(
           new RTCSessionDescription(data.offer)
