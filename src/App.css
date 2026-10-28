@@ -117,3 +117,16 @@ video {
   color: white;
   font-weight: 600;
 }
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.app-logo {
+  width: 55px;
+  height: 55px;
+  object-fit: contain;
+}

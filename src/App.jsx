@@ -22,6 +22,9 @@ function App() {
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
   const [networkSpeed, setNetworkSpeed] = useState("Checking...");
+  const [transcript, setTranscript] = useState("");
+const [isListening, setIsListening] = useState(false);
+const recognitionRef = useRef(null);
 
   // -----------------------------
   // Start Camera
@@ -60,6 +63,62 @@ function App() {
   });
 
   setMicOn(audioTracks.some((track) => track.enabled));
+};
+const startListening = () => {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Please use Google Chrome for Voice-to-Text.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "en-IN";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = (event) => {
+    let text = "";
+
+    for (let i = 0; i < event.results.length; i++) {
+      text += event.results[i][0].transcript + " ";
+    }
+
+    setTranscript(text.trim());
+  };
+
+  recognition.onerror = (event) => {
+  console.error("Speech recognition error:", event.error);
+  alert("Voice error: " + event.error);
+  setIsListening(false);
+};
+
+recognition.onstart = () => {
+  console.log("Voice recognition started");
+};
+
+recognition.onend = () => {
+  setIsListening(false);
+};
+
+  recognition.onend = () => {
+    setIsListening(false);
+  };
+
+  recognitionRef.current = recognition;
+  recognition.start();
+  setIsListening(true);
+};
+
+const stopListening = () => {
+  if (recognitionRef.current) {
+    recognitionRef.current.stop();
+    recognitionRef.current = null;
+  }
+
+  setIsListening(false);
 };
 
   // -----------------------------
@@ -491,7 +550,10 @@ useEffect(() => {
 
   return (
     <div className="app">
-      <h1>Low Bandwidth Video Chat</h1>
+      <div className="app-header">
+  <img src="/logo.png" alt="Website Logo" className="app-logo" />
+  <h1>Low Bandwidth Video Chat</h1>
+</div>
 
       <div className="room-section">
   <input
@@ -565,6 +627,29 @@ useEffect(() => {
           </button>
         )}
       </div>
+      <div className="voice-to-text">
+  <h2>🎙️ Voice to Text</h2>
+
+  <div className="voice-buttons">
+    {!isListening ? (
+      <button onClick={startListening}>
+        🎤 Start Listening
+      </button>
+    ) : (
+      <button onClick={stopListening}>
+        ⏹️ Stop Listening
+      </button>
+    )}
+  </div>
+
+  <div className="transcript-box">
+    <h3>Converted Text:</h3>
+    <p>
+      {transcript || "Your spoken words will appear here..."}
+    </p>
+  </div>
+</div>
+
       <div className="credit">
   Designed & Developed by <strong>HaRdIk</strong>
 </div>
