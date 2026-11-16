@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import {
-  Logo, SignalBars, speedLevel, HeroArt, PersonArt,
-  IconDice, IconLink, IconJoin, IconMic, IconMicOff, IconVideo, IconPhoneOff,
-} from "./Graphics.jsx";
 
 const SIGNALING_SERVER = "wss://low-bandwidth-video-chat.onrender.com";
 const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY;
@@ -19,6 +15,8 @@ function App() {
   const socketRef = useRef(null);
 
   const pendingCandidatesRef = useRef([]);
+  const recognitionRef = useRef(null);
+  const recognitionActiveRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
@@ -26,6 +24,12 @@ function App() {
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
   const [networkSpeed, setNetworkSpeed] = useState("Checking...");
+  const [captionLanguage, setCaptionLanguage] = useState("en-IN");
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const [localCaption, setLocalCaption] = useState("");
+  const [remoteCaption, setRemoteCaption] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
 
   // -----------------------------
   // Start Camera
@@ -51,7 +55,7 @@ function App() {
       setStatus("Camera ready");
     } catch (error) {
       console.error(error);
-      alert("Camera aur microphone ki permission allow karo.");
+      alert("Please allow camera and microphone permissions.");
     }
   };
   const toggleMute = () => {
@@ -258,12 +262,12 @@ const copyRoomLink = async () => {
 };
   const joinRoom = () => {
     if (!cameraOn) {
-      alert("Please enable your camera and microphone to continue.");
+      alert("Please turn on your camera and microphone to continue.");
       return;
     }
 
     if (!roomId.trim()) {
-      alert("Enter room ID.");
+      alert("Please enter a Room ID.");
       return;
     }
 
@@ -303,6 +307,21 @@ const copyRoomLink = async () => {
       const data = JSON.parse(event.data);
 
       console.log("Signaling message:", data.type);
+
+      // Live captions and text chat are relayed by the existing room server.
+      if (data.type === "live-caption") {
+        setRemoteCaption(data.text || "");
+        return;
+      }
+
+      if (data.type === "chat-message") {
+        setChatMessages((previous) => [
+          ...previous,
+          { id: `${Date.now()}-${Math.random()}`, text: data.text || "", sender: "Other person", time: data.time || "" },
+        ]);
+        return;
+      }
+
 
       // -------------------------
       // Someone joined
@@ -430,9 +449,111 @@ const copyRoomLink = async () => {
   };
 
   // -----------------------------
+  // Live captions (browser speech recognition)
+  // -----------------------------
+  const stopCaptions = () => {
+    recognitionActiveRef.current = false;
+    setCaptionsOn(false);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (error) { console.debug(error); }
+      recognitionRef.current = null;
+    }
+    setLocalCaption("");
+  };
+
+  const startCaptions = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Live Captions require a recent version of Google Chrome or Microsoft Edge.");
+      return;
+    }
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      alert("Please join a room before starting Live Captions.");
+      return;
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (error) { console.debug(error); }
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = captionLanguage;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      const completed = [];
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const text = result[0]?.transcript?.trim();
+        if (!text) continue;
+        if (result.isFinal) completed.push(text);
+        else interim += `${text} `;
+      }
+      const liveText = [completed.join(" "), interim.trim()].filter(Boolean).join(" ").trim();
+      if (liveText) {
+        setLocalCaption(liveText);
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+          socketRef.current.send(JSON.stringify({
+            type: "live-caption",
+            text: liveText,
+            isFinal: completed.length > 0 && !interim.trim(),
+          }));
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.warn("Caption recognition:", event.error);
+      if (["not-allowed", "service-not-allowed", "audio-capture", "aborted"].includes(event.error)) {
+        recognitionActiveRef.current = false;
+        setCaptionsOn(false);
+      }
+    };
+
+    recognition.onend = () => {
+      if (recognitionActiveRef.current) {
+        try { recognition.start(); } catch (error) { console.debug("Caption restart:", error); }
+      } else {
+        setCaptionsOn(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognitionActiveRef.current = true;
+    setCaptionsOn(true);
+    try {
+      recognition.start();
+    } catch (error) {
+      recognitionActiveRef.current = false;
+      setCaptionsOn(false);
+      console.error(error);
+      alert("Unable to start captions. Please check your microphone permissions.");
+    }
+  };
+
+  const sendChatMessage = () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      alert("Please join a room before sending a message.");
+      return;
+    }
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    socketRef.current.send(JSON.stringify({ type: "chat-message", text, time }));
+    setChatMessages((previous) => [
+      ...previous,
+      { id: `${Date.now()}-${Math.random()}`, text, sender: "You", time },
+    ]);
+    setChatInput("");
+  };
+
+  // -----------------------------
   // End Call
   // -----------------------------
   const endCall = () => {
+    stopCaptions();
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -477,6 +598,8 @@ useEffect(() => {
 
   useEffect(() => {
     return () => {
+      recognitionActiveRef.current = false;
+      if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch (error) { console.debug(error); } }
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
       }
@@ -495,109 +618,138 @@ useEffect(() => {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <Logo />
-          <span>Low Bandwidth Video Chat</span>
-        </div>
-
-        <div className="topbar-right">
-          <div className="pill">
-            <span className={connected ? "dot live" : "dot"} />
-            Status: <strong>{status}</strong>
-          </div>
-          <div className="pill">
-            <SignalBars level={speedLevel(networkSpeed)} />
-            Network: <strong>{networkSpeed}</strong>
-          </div>
-        </div>
-      </header>
-
-      <section className="hero">
-        <div>
-          <h1>Clear video calls on weak connections</h1>
-          <p>
-            Pick a room, share the link, and talk. Video is kept light so the
-            call stays smooth on slow networks.
-          </p>
-        </div>
-        <HeroArt />
-      </section>
+      <h1>Low Bandwidth Video Chat</h1>
 
       <div className="room-section">
-        <label className="room-field">
-          <IconLink />
-          <input
-            type="text"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            placeholder="Enter Room ID"
-            aria-label="Room ID"
-          />
-        </label>
+  <input
+    type="text"
+    value={roomId}
+    onChange={(e) => setRoomId(e.target.value)}
+    placeholder="Enter Room ID"
+  />
 
-        <button onClick={generateRoomId}>
-          <IconDice /> Generate Room ID
-        </button>
+  <button onClick={generateRoomId}>
+    🎲 Generate Room ID
+  </button>
 
-        <button onClick={copyRoomLink}>
-          <IconLink /> Copy Link
-        </button>
+  <button onClick={copyRoomLink}>
+    📋 Copy Link
+  </button>
 
-        <button className="primary" onClick={joinRoom}>
-          <IconJoin /> Join Room
-        </button>
+  <button onClick={joinRoom}>
+    🔗 Join Room
+  </button>
+</div>
+
+      <div className="status">
+        Status: <strong>{status}</strong>
       </div>
-
+<div className="network-speed">
+  📶 Network: <strong>{networkSpeed}</strong>
+</div>
       <div className="videos">
         <div className="video-box">
           <span>You</span>
 
-          <video ref={localVideoRef} autoPlay playsInline muted />
-
-          {!cameraOn && (
-            <div className="waiting">
-              <PersonArt off />
-              Camera is off
-            </div>
-          )}
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+          />
         </div>
 
         <div className="video-box">
           <span>Other Person</span>
 
-          <video ref={remoteVideoRef} autoPlay playsInline />
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+          />
 
           {!connected && (
             <div className="waiting">
-              <PersonArt />
-              Waiting for other person...
+              Waiting for the other participant…
             </div>
           )}
         </div>
       </div>
 
       <div className="controls">
-        {cameraOn && (
-          <button onClick={toggleMute}>
-            {micOn ? <IconMic /> : <IconMicOff />}
-            {micOn ? "Mute" : "Unmute"}
-          </button>
-        )}
+      {cameraOn && (
+  <button onClick={toggleMute}>
+    {micOn ? "🎤 Mute" : "🔇 Unmute"}
+  </button>
+)}
         {!cameraOn ? (
-          <button className="primary" onClick={startCamera}>
-            <IconVideo /> Start Camera
+          <button onClick={startCamera}>
+            📹 Start Camera
           </button>
         ) : (
-          <button className="danger" onClick={endCall}>
-            <IconPhoneOff /> End Call
+          <button onClick={endCall}>
+            📞 End Call
           </button>
         )}
       </div>
+      <section className="caption-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Live Captions</h2>
+            <p>Your speech appears here in real time and is shared with the other participant.</p>
+          </div>
+          <div className="caption-actions">
+            <label className="language-picker">
+              <span>Speech recognition language</span>
+              <select value={captionLanguage} onChange={(event) => setCaptionLanguage(event.target.value)} disabled={captionsOn}>
+                <option value="en-IN">English & Hinglish (India)</option>
+                <option value="hi-IN">Hindi (India)</option>
+              </select>
+            </label>
+            {!captionsOn ? (
+              <button className="primary-action" onClick={startCaptions}>🎙 Start Live Captions</button>
+            ) : (
+              <button className="stop-action" onClick={stopCaptions}>■ Stop Captions</button>
+            )}
+          </div>
+        </div>
+        <div className="caption-grid" aria-live="polite">
+          <div className="caption-card">
+            <span className="caption-label">YOUR CAPTIONS</span>
+            <p>{localCaption || (captionsOn ? "Listening… Speak naturally." : "Your spoken words will appear here in real time.")}</p>
+          </div>
+          <div className="caption-card remote-caption">
+            <span className="caption-label">PARTICIPANT CAPTIONS</span>
+            <p>{remoteCaption || "The other participant’s live captions will appear here."}</p>
+          </div>
+        </div>
+        <small className="caption-note">Speak naturally in English or Hinglish. For Hindi-only speech, select Hindi (India). Recognition accuracy may vary depending on your browser, microphone, network, and accent.</small>
+      </section>
 
+      <section className="chat-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Live Text Chat</h2>
+            <p>Send instant text messages while staying on your video call.</p>
+          </div>
+        </div>
+        <div className="chat-history" aria-live="polite">
+          {chatMessages.length === 0 ? <p className="empty-chat">No messages yet. Start the conversation!</p> : chatMessages.map((item) => (
+            <div className={`chat-message ${item.sender === "You" ? "mine" : "theirs"}`} key={item.id}>
+              <strong>{item.sender}</strong>
+              <p>{item.text}</p>
+              <small>{item.time}</small>
+            </div>
+          ))}
+        </div>
+        <form className="chat-compose" onSubmit={(event) => { event.preventDefault(); sendChatMessage(); }}>
+          <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Type your message here…" aria-label="Type a message" />
+          <button type="submit" className="primary-action" disabled={!chatInput.trim()}>Send Message</button>
+        </form>
+      </section>
       <div className="credit">
-        Designed &amp; Developed by <strong>HaRdIk</strong>
-      </div>
+  Designed & Developed by <strong>HaRdIk</strong>
+</div>
     </div>
   );
 }
