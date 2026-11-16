@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import {
+  Logo, SignalBars, speedLevel, HeroArt, PersonArt,
+  IconDice, IconLink, IconJoin, IconMic, IconMicOff, IconVideo, IconPhoneOff,
+} from "./Graphics.jsx";
 
 const SIGNALING_SERVER = "wss://low-bandwidth-video-chat.onrender.com";
 const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY;
@@ -22,9 +26,6 @@ function App() {
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
   const [networkSpeed, setNetworkSpeed] = useState("Checking...");
-  const [transcript, setTranscript] = useState("");
-const [isListening, setIsListening] = useState(false);
-const recognitionRef = useRef(null);
 
   // -----------------------------
   // Start Camera
@@ -63,62 +64,6 @@ const recognitionRef = useRef(null);
   });
 
   setMicOn(audioTracks.some((track) => track.enabled));
-};
-const startListening = () => {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    alert("Please use Google Chrome for Voice-to-Text.");
-    return;
-  }
-
-  const recognition = new SpeechRecognition();
-
-  recognition.lang = "en-IN";
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  recognition.onresult = (event) => {
-    let text = "";
-
-    for (let i = 0; i < event.results.length; i++) {
-      text += event.results[i][0].transcript + " ";
-    }
-
-    setTranscript(text.trim());
-  };
-
-  recognition.onerror = (event) => {
-  console.error("Speech recognition error:", event.error);
-  alert("Voice error: " + event.error);
-  setIsListening(false);
-};
-
-recognition.onstart = () => {
-  console.log("Voice recognition started");
-};
-
-recognition.onend = () => {
-  setIsListening(false);
-};
-
-  recognition.onend = () => {
-    setIsListening(false);
-  };
-
-  recognitionRef.current = recognition;
-  recognition.start();
-  setIsListening(true);
-};
-
-const stopListening = () => {
-  if (recognitionRef.current) {
-    recognitionRef.current.stop();
-    recognitionRef.current = null;
-  }
-
-  setIsListening(false);
 };
 
   // -----------------------------
@@ -550,61 +495,82 @@ useEffect(() => {
 
   return (
     <div className="app">
-      <div className="app-header">
-  <img src="/logo.png" alt="Website Logo" className="app-logo" />
-  <h1>Low Bandwidth Video Chat</h1>
-</div>
+      <header className="topbar">
+        <div className="brand">
+          <Logo />
+          <span>Low Bandwidth Video Chat</span>
+        </div>
+
+        <div className="topbar-right">
+          <div className="pill">
+            <span className={connected ? "dot live" : "dot"} />
+            Status: <strong>{status}</strong>
+          </div>
+          <div className="pill">
+            <SignalBars level={speedLevel(networkSpeed)} />
+            Network: <strong>{networkSpeed}</strong>
+          </div>
+        </div>
+      </header>
+
+      <section className="hero">
+        <div>
+          <h1>Clear video calls on weak connections</h1>
+          <p>
+            Pick a room, share the link, and talk. Video is kept light so the
+            call stays smooth on slow networks.
+          </p>
+        </div>
+        <HeroArt />
+      </section>
 
       <div className="room-section">
-  <input
-    type="text"
-    value={roomId}
-    onChange={(e) => setRoomId(e.target.value)}
-    placeholder="Enter Room ID"
-  />
+        <label className="room-field">
+          <IconLink />
+          <input
+            type="text"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+            placeholder="Enter Room ID"
+            aria-label="Room ID"
+          />
+        </label>
 
-  <button onClick={generateRoomId}>
-    🎲 Generate Room ID
-  </button>
+        <button onClick={generateRoomId}>
+          <IconDice /> Generate Room ID
+        </button>
 
-  <button onClick={copyRoomLink}>
-    📋 Copy Link
-  </button>
+        <button onClick={copyRoomLink}>
+          <IconLink /> Copy Link
+        </button>
 
-  <button onClick={joinRoom}>
-    🔗 Join Room
-  </button>
-</div>
-
-      <div className="status">
-        Status: <strong>{status}</strong>
+        <button className="primary" onClick={joinRoom}>
+          <IconJoin /> Join Room
+        </button>
       </div>
-<div className="network-speed">
-  📶 Network: <strong>{networkSpeed}</strong>
-</div>
+
       <div className="videos">
         <div className="video-box">
           <span>You</span>
 
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-          />
+          <video ref={localVideoRef} autoPlay playsInline muted />
+
+          {!cameraOn && (
+            <div className="waiting">
+              <PersonArt off />
+              Camera is off
+            </div>
+          )}
         </div>
 
         <div className="video-box">
           <span>Other Person</span>
 
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-          />
+          <video ref={remoteVideoRef} autoPlay playsInline />
 
           {!connected && (
             <div className="waiting">
+              <PersonArt />
               Waiting for other person...
             </div>
           )}
@@ -612,47 +578,26 @@ useEffect(() => {
       </div>
 
       <div className="controls">
-      {cameraOn && (
-  <button onClick={toggleMute}>
-    {micOn ? "🎤 Mute" : "🔇 Unmute"}
-  </button>
-)}
+        {cameraOn && (
+          <button onClick={toggleMute}>
+            {micOn ? <IconMic /> : <IconMicOff />}
+            {micOn ? "Mute" : "Unmute"}
+          </button>
+        )}
         {!cameraOn ? (
-          <button onClick={startCamera}>
-            📹 Start Camera
+          <button className="primary" onClick={startCamera}>
+            <IconVideo /> Start Camera
           </button>
         ) : (
-          <button onClick={endCall}>
-            📞 End Call
+          <button className="danger" onClick={endCall}>
+            <IconPhoneOff /> End Call
           </button>
         )}
       </div>
-      <div className="voice-to-text">
-  <h2>🎙️ Voice to Text</h2>
-
-  <div className="voice-buttons">
-    {!isListening ? (
-      <button onClick={startListening}>
-        🎤 Start Listening
-      </button>
-    ) : (
-      <button onClick={stopListening}>
-        ⏹️ Stop Listening
-      </button>
-    )}
-  </div>
-
-  <div className="transcript-box">
-    <h3>Converted Text:</h3>
-    <p>
-      {transcript || "Your spoken words will appear here..."}
-    </p>
-  </div>
-</div>
 
       <div className="credit">
-  Designed & Developed by <strong>HaRdIk</strong>
-</div>
+        Designed &amp; Developed by <strong>HaRdIk</strong>
+      </div>
     </div>
   );
 }
