@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import {
+  RnnoiseWorkletNode,
+  loadRnnoise
+} from "@sapphi-red/web-noise-suppressor";
+
+import rnnoiseWorkletPath from "@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url";
+
+import rnnoiseWasmPath from "@sapphi-red/web-noise-suppressor/rnnoise.wasm?url"; 
+import rnnoiseWasmSimdPath from "@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url";
 
 const SIGNALING_SERVER = "wss://low-bandwidth-video-chat.onrender.com";
 const METERED_API_KEY = import.meta.env.VITE_METERED_API_KEY;
@@ -13,13 +22,16 @@ function App() {
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const socketRef = useRef(null);
-
+const audioContextRef = useRef(null);
+const rnnoiseNodeRef = useRef(null);
+const processedStreamRef = useRef(null);
   const pendingCandidatesRef = useRef([]);
   const recognitionRef = useRef(null);
   const recognitionActiveRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(true);
+  const [noiseCancellationOn, setNoiseCancellationOn] = useState(false);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState("Not connected");
   const [roomId, setRoomId] = useState("test123");
@@ -42,33 +54,117 @@ function App() {
           height: { ideal: 360 },
           frameRate: { ideal: 15, max: 20 },
         },
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       localStreamRef.current = stream;
+      let rnnoiseReady = false;
+
+      // RNNoise failure should not prevent a normal video call from starting.
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass || !AudioContextClass.prototype.audioWorklet) {
+          throw new Error("AudioWorklet is not supported by this browser.");
+        }
+
+        const audioContext = new AudioContextClass();
+        audioContextRef.current = audioContext;
+
+        const rnnoiseWasmBinary = await loadRnnoise({
+          url: rnnoiseWasmPath,
+          simdUrl: rnnoiseWasmSimdPath,
+        });
+
+        await audioContext.audioWorklet.addModule(rnnoiseWorkletPath);
+
+        const source = audioContext.createMediaStreamSource(stream);
+        const rnnoiseNode = new RnnoiseWorkletNode(audioContext, {
+          wasmBinary: rnnoiseWasmBinary,
+          maxChannels: 1,
+        });
+        const destination = audioContext.createMediaStreamDestination();
+
+        source.connect(rnnoiseNode);
+        rnnoiseNode.connect(destination);
+
+        const processedAudioTrack = destination.stream.getAudioTracks()[0];
+        if (!processedAudioTrack) {
+          throw new Error("RNNoise did not create an output audio track.");
+        }
+
+        rnnoiseNodeRef.current = rnnoiseNode;
+        processedStreamRef.current = destination.stream;
+        await audioContext.resume();
+        rnnoiseReady = true;
+      } catch (noiseError) {
+        console.error("RNNoise initialization failed; using microphone audio:", noiseError);
+        if (audioContextRef.current) {
+          try {
+            await audioContextRef.current.close();
+          } catch (closeError) {
+            console.debug("AudioContext close error:", closeError);
+          }
+          audioContextRef.current = null;
+        }
+        rnnoiseNodeRef.current = null;
+        processedStreamRef.current = null;
+      }
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
+      setNoiseCancellationOn(rnnoiseReady);
       setCameraOn(true);
-      setStatus("Camera ready");
+      setStatus(rnnoiseReady ? "Camera ready - RNNoise enabled" : "Camera ready - standard audio");
     } catch (error) {
-      console.error(error);
+      console.error("Camera start error:", error);
       alert("Please allow camera and microphone permissions.");
     }
   };
+
   const toggleMute = () => {
-  if (!localStreamRef.current) return;
+    if (!localStreamRef.current) return;
 
-  const audioTracks = localStreamRef.current.getAudioTracks();
+    const audioTracks = localStreamRef.current.getAudioTracks();
+    if (!audioTracks.length) return;
 
-  audioTracks.forEach((track) => {
-    track.enabled = !track.enabled;
-  });
+    const nextEnabled = !audioTracks[0].enabled;
+    audioTracks.forEach((track) => {
+      track.enabled = nextEnabled;
+    });
+    setMicOn(nextEnabled);
+  };
 
-  setMicOn(audioTracks.some((track) => track.enabled));
-};
+  const toggleNoiseCancellation = async () => {
+    const originalAudioTrack = localStreamRef.current?.getAudioTracks()[0];
+    const processedAudioTrack = processedStreamRef.current?.getAudioTracks()[0];
+
+    if (!originalAudioTrack || !processedAudioTrack) {
+      alert("RNNoise is not available in this browser session. Restart the camera and check the console for errors.");
+      return;
+    }
+
+    const nextEnabled = !noiseCancellationOn;
+    const audioSender = peerConnectionRef.current
+      ?.getSenders()
+      .find((sender) => sender.track?.kind === "audio");
+
+    try {
+      if (audioSender) {
+        await audioSender.replaceTrack(nextEnabled ? processedAudioTrack : originalAudioTrack);
+      }
+      setNoiseCancellationOn(nextEnabled);
+      setStatus(nextEnabled ? "RNNoise noise cancellation ON" : "RNNoise noise cancellation OFF");
+    } catch (error) {
+      console.error("Unable to switch noise cancellation:", error);
+      alert("Could not switch noise cancellation. Please try again.");
+    }
+  };
 
   // -----------------------------
   // Create WebRTC Connection
@@ -171,11 +267,24 @@ function App() {
     iceServers: cachedIceServers,
   });
 
-  // Local tracks add karo
+  // Send original camera video and either RNNoise-processed or original microphone audio.
   if (localStreamRef.current) {
-    localStreamRef.current.getTracks().forEach((track) => {
+    localStreamRef.current.getVideoTracks().forEach((track) => {
       peer.addTrack(track, localStreamRef.current);
     });
+
+    const originalAudioTrack = localStreamRef.current.getAudioTracks()[0];
+    const processedAudioTrack = processedStreamRef.current?.getAudioTracks()[0];
+    const outgoingAudioTrack = noiseCancellationOn && processedAudioTrack
+      ? processedAudioTrack
+      : originalAudioTrack;
+
+    if (outgoingAudioTrack) {
+      const audioStream = noiseCancellationOn && processedStreamRef.current
+        ? processedStreamRef.current
+        : localStreamRef.current;
+      peer.addTrack(outgoingAudioTrack, audioStream);
+    }
   }
 
   // Remote video receive
@@ -552,9 +661,12 @@ const copyRoomLink = async () => {
   // -----------------------------
   // End Call
   // -----------------------------
-  const endCall = () => {
+  const endCall = async () => {
     stopCaptions();
     if (peerConnectionRef.current) {
+      if (peerConnectionRef.current._networkMonitor) {
+        clearInterval(peerConnectionRef.current._networkMonitor);
+      }
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
@@ -571,6 +683,33 @@ const copyRoomLink = async () => {
 
       localStreamRef.current = null;
     }
+
+    if (processedStreamRef.current) {
+      processedStreamRef.current.getTracks().forEach((track) => track.stop());
+      processedStreamRef.current = null;
+    }
+
+    if (rnnoiseNodeRef.current) {
+      try {
+        rnnoiseNodeRef.current.disconnect();
+        rnnoiseNodeRef.current.destroy?.();
+      } catch (error) {
+        console.debug("RNNoise cleanup error:", error);
+      }
+      rnnoiseNodeRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      try {
+        await audioContextRef.current.close();
+      } catch (error) {
+        console.debug("AudioContext cleanup error:", error);
+      }
+      audioContextRef.current = null;
+    }
+
+    setNoiseCancellationOn(false);
+    setMicOn(true);
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
@@ -612,6 +751,20 @@ useEffect(() => {
         localStreamRef.current
           .getTracks()
           .forEach((track) => track.stop());
+      }
+      if (processedStreamRef.current) {
+        processedStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (rnnoiseNodeRef.current) {
+        try {
+          rnnoiseNodeRef.current.disconnect();
+          rnnoiseNodeRef.current.destroy?.();
+        } catch (error) {
+          console.debug("RNNoise unmount cleanup error:", error);
+        }
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close().catch((error) => console.debug(error));
       }
     };
   }, []);
@@ -678,10 +831,15 @@ useEffect(() => {
 
       <div className="controls">
       {cameraOn && (
-  <button onClick={toggleMute}>
-    {micOn ? "🎤 Mute" : "🔇 Unmute"}
-  </button>
-)}
+        <>
+          <button onClick={toggleMute}>
+            {micOn ? "🎤 Mute" : "🔇 Unmute"}
+          </button>
+          <button onClick={toggleNoiseCancellation} disabled={!processedStreamRef.current}>
+            {noiseCancellationOn ? "🟢 RNNoise ON" : "⚪ RNNoise OFF"}
+          </button>
+        </>
+      )}
         {!cameraOn ? (
           <button onClick={startCamera}>
             📹 Start Camera
