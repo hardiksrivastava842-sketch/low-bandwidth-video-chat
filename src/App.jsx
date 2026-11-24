@@ -66,13 +66,23 @@ const processedStreamRef = useRef(null);
 
       // RNNoise failure should not prevent a normal video call from starting.
       try {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextClass || !AudioContextClass.prototype.audioWorklet) {
-          throw new Error("AudioWorklet is not supported by this browser.");
-        }
+        
+    const AudioContextClass =
+  window.AudioContext || window.webkitAudioContext;
 
-        const audioContext = new AudioContextClass();
-        audioContextRef.current = audioContext;
+if (!AudioContextClass) {
+  throw new Error("AudioContext is not supported by this browser.");
+}
+
+const audioContext = new AudioContextClass();
+audioContextRef.current = audioContext;
+
+if (!audioContext.audioWorklet) {
+  await audioContext.close();
+  audioContextRef.current = null;
+
+  throw new Error("AudioWorklet is not supported by this browser.");
+}
 
         const rnnoiseWasmBinary = await loadRnnoise({
           url: rnnoiseWasmPath,
