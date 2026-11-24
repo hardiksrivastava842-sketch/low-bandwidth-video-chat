@@ -6,8 +6,8 @@
 
 :root {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #edf3ff;
-  background: #080d1b;
+  color: #20242b;
+  background: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -17,17 +17,14 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #080d1b;
+  background: #ffffff;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(ellipse at 50% -12%, rgba(78, 104, 220, 0.22), transparent 42%),
-    radial-gradient(ellipse at 100% 55%, rgba(101, 71, 190, 0.10), transparent 35%),
-    linear-gradient(180deg, #0b1224 0%, #070b16 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
 }
 
 button,
@@ -37,11 +34,11 @@ select {
 }
 
 button {
-  border: 1px solid #35466c;
+  border: 1px solid #d7dce2;
   padding: 11px 16px;
   border-radius: 11px;
-  color: #eef3ff;
-  background: #172541;
+  color: #ffffff;
+  background: #20242b;
   cursor: pointer;
   font-weight: 600;
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
@@ -49,15 +46,15 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  border-color: #8292ff;
-  background: #20345b;
-  box-shadow: 0 7px 22px rgba(50, 76, 170, 0.18);
+  border-color: #20242b;
+  background: #3a414b;
+  box-shadow: 0 7px 22px rgba(20, 25, 35, 0.12);
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid #8995ff;
+  outline: 2px solid #737b86;
   outline-offset: 2px;
 }
 
@@ -73,7 +70,7 @@ button:disabled {
   min-height: 100vh;
   margin: 0 auto;
   padding: 34px clamp(16px, 4vw, 52px);
-  color: #edf3ff;
+  color: #20242b;
   text-align: center;
 }
 
@@ -83,10 +80,7 @@ button:disabled {
   line-height: 1.2;
   letter-spacing: -1.2px;
   font-weight: 800;
-  background: linear-gradient(100deg, #ffffff 15%, #c8d3ff 65%, #a9a5ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #171a20;
 }
 
 .room-section {
@@ -101,30 +95,35 @@ button:disabled {
 .chat-compose input {
   min-width: 190px;
   padding: 12px 14px;
-  color: #f3f6ff;
-  background: rgba(17, 28, 52, 0.92);
-  border: 1px solid #293a60;
+  color: #20242b;
+  background: #ffffff;
+  border: 1px solid #dfe3e8;
   border-radius: 11px;
   outline: none;
+}
+
+.room-section input::placeholder,
+.chat-compose input::placeholder {
+  color: #9299a3;
 }
 
 .room-section input:focus,
 .chat-compose input:focus,
 .language-picker select:focus {
-  border-color: #7c8cff;
-  box-shadow: 0 0 0 3px rgba(101, 117, 255, 0.14);
+  border-color: #8b929c;
+  box-shadow: 0 0 0 3px rgba(60, 68, 80, 0.10);
 }
 
 .status,
 .network-speed {
   margin: 10px 0;
-  color: #aab8d5;
+  color: #68717d;
   font-size: 14px;
 }
 
 .status strong,
 .network-speed strong {
-  color: #e7edff;
+  color: #252a32;
   font-weight: 600;
 }
 
@@ -141,11 +140,11 @@ button:disabled {
   position: relative;
   aspect-ratio: 16 / 9;
   min-width: 0;
-  background: linear-gradient(135deg, #101b32, #050914);
-  border: 1px solid #2b3a5e;
+  background: #eef0f3;
+  border: 1px solid #dfe3e8;
   border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 12px 32px rgba(25, 30, 40, 0.09);
 }
 
 .video-box > span {
@@ -153,8 +152,9 @@ button:disabled {
   top: 12px;
   left: 12px;
   z-index: 2;
-  background: rgba(7, 16, 32, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.94);
+  color: #252a32;
+  border: 1px solid #e2e5e9;
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12px;
@@ -176,8 +176,8 @@ video {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  color: #a8b4cf;
-  background: rgba(6, 11, 24, 0.72);
+  color: #626b77;
+  background: rgba(245, 246, 248, 0.88);
   font-size: 14px;
 }
 
@@ -196,10 +196,10 @@ video {
   margin: 18px auto;
   padding: 22px;
   text-align: left;
-  border: 1px solid rgba(73, 96, 151, 0.48);
+  border: 1px solid #e1e4e8;
   border-radius: 18px;
-  background: linear-gradient(145deg, rgba(17, 29, 53, 0.96), rgba(13, 21, 40, 0.97));
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.20);
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(25, 30, 40, 0.06);
 }
 
 .panel-heading {
@@ -213,7 +213,7 @@ video {
 
 .panel-heading h2 {
   margin: 0 0 6px;
-  color: #f5f7ff;
+  color: #20242b;
   font-size: 19px;
   letter-spacing: -0.3px;
   font-weight: 700;
@@ -221,7 +221,7 @@ video {
 
 .panel-heading p {
   margin: 0;
-  color: #a7b6d5;
+  color: #737c87;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -236,7 +236,7 @@ video {
 .language-picker {
   display: grid;
   gap: 6px;
-  color: #a7b6d5;
+  color: #68717d;
   font-size: 11px;
   font-weight: 600;
 }
@@ -244,38 +244,40 @@ video {
 .language-picker select {
   min-height: 44px;
   padding: 9px 12px;
-  color: #edf3ff;
-  background: #101b32;
-  border: 1px solid #35466c;
+  color: #252a32;
+  background: #ffffff;
+  border: 1px solid #d7dce2;
   border-radius: 10px;
   outline: none;
   cursor: pointer;
 }
 
 .language-picker option {
-  color: #edf3ff;
-  background: #101b32;
+  color: #252a32;
+  background: #ffffff;
 }
 
 .primary-action {
-  border-color: #7180ff;
-  background: linear-gradient(120deg, #5368e8, #7955d9);
-  color: #fff;
+  border-color: #20242b;
+  background: #20242b;
+  color: #ffffff;
 }
 
 .primary-action:hover {
-  background: linear-gradient(120deg, #6377fa, #8967eb);
-  border-color: #a4adff;
+  background: #3a414b;
+  border-color: #3a414b;
 }
 
 .stop-action {
-  background: #48243a;
-  border-color: #8b4268;
+  color: #a12d35;
+  background: #fff5f5;
+  border-color: #efc7ca;
 }
 
 .stop-action:hover {
-  background: #5b2c49;
-  border-color: #b45b88;
+  color: #ffffff;
+  background: #a12d35;
+  border-color: #a12d35;
 }
 
 .caption-grid {
@@ -287,17 +289,17 @@ video {
 .caption-card {
   min-height: 116px;
   padding: 16px;
-  border: 1px solid #34466d;
+  border: 1px solid #e1e5e9;
   border-radius: 13px;
-  background: rgba(10, 19, 39, 0.94);
+  background: #f8f9fa;
 }
 
 .remote-caption {
-  background: rgba(16, 23, 43, 0.96);
+  background: #f3f5f7;
 }
 
 .caption-label {
-  color: #9fb2ed;
+  color: #68717d;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 1.1px;
@@ -305,7 +307,7 @@ video {
 
 .caption-card p {
   margin: 12px 0 0;
-  color: #f2f5ff;
+  color: #252a32;
   font-size: 17px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -314,7 +316,7 @@ video {
 .caption-note {
   display: block;
   margin-top: 13px;
-  color: #91a1c1;
+  color: #7b8490;
   font-size: 12px;
   line-height: 1.65;
 }
@@ -327,11 +329,11 @@ video {
   overflow-y: auto;
   padding: 4px 3px 14px;
   scrollbar-width: thin;
-  scrollbar-color: #435783 transparent;
+  scrollbar-color: #c5cbd2 transparent;
 }
 
 .empty-chat {
-  color: #91a1c1;
+  color: #7b8490;
   font-size: 14px;
   text-align: center;
   padding: 22px 12px;
@@ -341,16 +343,17 @@ video {
   width: fit-content;
   max-width: min(80%, 520px);
   padding: 11px 14px;
-  border: 1px solid rgba(104, 129, 185, 0.18);
+  border: 1px solid #e1e5e9;
   border-radius: 13px;
-  background: #172744;
+  background: #f1f3f5;
   overflow-wrap: anywhere;
 }
 
 .chat-message.mine {
   align-self: flex-end;
-  background: #27336a;
-  border-color: rgba(139, 151, 255, 0.25);
+  color: #ffffff;
+  background: #343a43;
+  border-color: #343a43;
 }
 
 .chat-message.theirs {
@@ -359,18 +362,24 @@ video {
 
 .chat-message strong {
   font-size: 11px;
-  color: #b8c7ec;
+  color: #68717d;
+}
+
+.chat-message.mine strong,
+.chat-message.mine p,
+.chat-message.mine small {
+  color: #ffffff;
 }
 
 .chat-message p {
   margin: 6px 0;
-  color: #f4f6ff;
+  color: #252a32;
   line-height: 1.5;
   white-space: pre-wrap;
 }
 
 .chat-message small {
-  color: #aab8d5;
+  color: #7b8490;
   font-size: 10px;
 }
 
@@ -393,11 +402,11 @@ video {
 .credit {
   margin-top: 32px;
   font-size: 13px;
-  color: #8190ad;
+  color: #7b8490;
 }
 
 .credit strong {
-  color: #dce5ff;
+  color: #252a32;
   font-weight: 700;
 }
 
