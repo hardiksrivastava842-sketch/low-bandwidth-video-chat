@@ -134,6 +134,9 @@ if (!audioContext.audioWorklet) {
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch((playError) => {
+          console.warn("Local camera preview playback error:", playError);
+        });
       }
 
       setNoiseCancellationOn(rnnoiseReady);
@@ -307,32 +310,52 @@ if (!audioContext.audioWorklet) {
 
   // Remote audio/video receive. Build a stream from tracks as a fallback
   // for browsers/events where event.streams[0] is empty.
-  peer.ontrack = async (event) => {
-    console.log("Remote track received:", event.track?.kind);
-    console.log("REMOTE TRACK:", event.track);
-console.log("REMOTE STREAMS:", event.streams);
-    const incomingStream = event.streams?.[0];
-    if (incomingStream) {
-      remoteStreamRef.current = incomingStream;
-    } else {
-      if (!remoteStreamRef.current) {
-        remoteStreamRef.current = new MediaStream();
-      }
-      const alreadyAdded = remoteStreamRef.current
-        .getTracks()
-        .some((track) => track.id === event.track.id);
-      if (!alreadyAdded) {
-        remoteStreamRef.current.addTrack(event.track);
-      }
+  // Receive remote audio/video tracks and keep one stable MediaStream.
+  // Replacing srcObject for every track can interrupt an in-progress play()
+  // request when video and audio arrive separately.
+  peer.ontrack = (event) => {
+    const track = event.track;
+    if (!track) return;
+
+    console.log("Remote track received:", track.kind, {
+      id: track.id,
+      readyState: track.readyState,
+      muted: track.muted
+    });
+
+    if (!remoteStreamRef.current) {
+      remoteStreamRef.current = new MediaStream();
     }
 
-    if (remoteVideoRef.current && remoteStreamRef.current) {
-      remoteVideoRef.current.srcObject = remoteStreamRef.current;
-      try {
-        await remoteVideoRef.current.play();
-      } catch (playError) {
-        console.warn("Remote video autoplay was blocked:", playError);
+    const remoteStream = remoteStreamRef.current;
+    const alreadyAdded = remoteStream
+      .getTracks()
+      .some((existingTrack) => existingTrack.id === track.id);
+
+    if (!alreadyAdded) {
+      remoteStream.addTrack(track);
+    }
+
+    const video = remoteVideoRef.current;
+    if (video) {
+      // Attach the stream only once; do not reload it for each incoming track.
+      if (video.srcObject !== remoteStream) {
+        video.srcObject = remoteStream;
       }
+
+      const playRemoteVideo = async () => {
+        if (!video.paused) return;
+        try {
+          await video.play();
+          console.log("Remote video playback started");
+        } catch (playError) {
+          console.warn("Remote video playback needs user interaction:", playError);
+        }
+      };
+
+      // Try now and again when the incoming track becomes unmuted.
+      playRemoteVideo();
+      track.onunmute = playRemoteVideo;
     }
 
     setConnected(true);
@@ -500,7 +523,6 @@ const copyRoomLink = async () => {
       offer,
     })
   );
-
   setStatus("Calling other person...");
 }
 
