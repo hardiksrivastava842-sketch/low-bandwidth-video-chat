@@ -18,6 +18,7 @@ let cachedIceServers = null;
 function App() {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteStreamRef = useRef(null);
 
   const localStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
@@ -62,6 +63,13 @@ const processedStreamRef = useRef(null);
       });
 
       localStreamRef.current = stream;
+      console.log("LOCAL CAMERA TRACKS:", stream.getTracks().map(t => ({
+  kind: t.kind,
+  enabled: t.enabled,
+  readyState: t.readyState
+})));
+
+console.log("LOCAL VIDEO ELEMENT:", localVideoRef.current);
       let rnnoiseReady = false;
 
       // RNNoise failure should not prevent a normal video call from starting.
@@ -297,16 +305,38 @@ if (!audioContext.audioWorklet) {
     }
   }
 
-  // Remote video receive
-  peer.ontrack = (event) => {
-    console.log("Remote stream received");
+  // Remote audio/video receive. Build a stream from tracks as a fallback
+  // for browsers/events where event.streams[0] is empty.
+  peer.ontrack = async (event) => {
+    console.log("Remote track received:", event.track?.kind);
+    console.log("REMOTE TRACK:", event.track);
+console.log("REMOTE STREAMS:", event.streams);
+    const incomingStream = event.streams?.[0];
+    if (incomingStream) {
+      remoteStreamRef.current = incomingStream;
+    } else {
+      if (!remoteStreamRef.current) {
+        remoteStreamRef.current = new MediaStream();
+      }
+      const alreadyAdded = remoteStreamRef.current
+        .getTracks()
+        .some((track) => track.id === event.track.id);
+      if (!alreadyAdded) {
+        remoteStreamRef.current.addTrack(event.track);
+      }
+    }
 
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = event.streams[0];
+    if (remoteVideoRef.current && remoteStreamRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      try {
+        await remoteVideoRef.current.play();
+      } catch (playError) {
+        console.warn("Remote video autoplay was blocked:", playError);
+      }
     }
 
     setConnected(true);
-    setStatus("Connected");
+    setStatus("Remote media received");
   };
 
   // ICE candidates
@@ -484,11 +514,18 @@ const copyRoomLink = async () => {
           new RTCSessionDescription(data.offer)
         );
 
-        // Pending ICE candidates add karo
+        // Apply candidates that arrived before the remote description/peer was ready.
         for (const candidate of pendingCandidatesRef.current) {
-          await peer.addIceCandidate(candidate);
+          try {
+            await peer.addIceCandidate(
+              candidate instanceof RTCIceCandidate
+                ? candidate
+                : new RTCIceCandidate(candidate)
+            );
+          } catch (iceError) {
+            console.warn("Unable to add queued ICE candidate:", iceError);
+          }
         }
-
         pendingCandidatesRef.current = [];
 
         const answer = await peer.createAnswer();
@@ -527,9 +564,16 @@ const copyRoomLink = async () => {
   );
 
   for (const candidate of pendingCandidatesRef.current) {
-    await peer.addIceCandidate(candidate);
+    try {
+      await peer.addIceCandidate(
+        candidate instanceof RTCIceCandidate
+          ? candidate
+          : new RTCIceCandidate(candidate)
+      );
+    } catch (iceError) {
+      console.warn("Unable to add queued ICE candidate:", iceError);
+    }
   }
-
   pendingCandidatesRef.current = [];
 
   setStatus("Connecting...");
@@ -543,16 +587,17 @@ const copyRoomLink = async () => {
       if (data.type === "ice-candidate") {
         const peer = peerConnectionRef.current;
 
-        if (!peer) return;
+        // Do not discard early candidates while TURN credentials or the peer
+        // connection are still being initialized.
+        if (!peer || !peer.remoteDescription) {
+          pendingCandidatesRef.current.push(data.candidate);
+          return;
+        }
 
-        const candidate = new RTCIceCandidate(
-          data.candidate
-        );
-
-        if (peer.remoteDescription) {
-          await peer.addIceCandidate(candidate);
-        } else {
-          pendingCandidatesRef.current.push(candidate);
+        try {
+          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (iceError) {
+          console.warn("Unable to add remote ICE candidate:", iceError);
         }
       }
     };
@@ -728,6 +773,7 @@ const copyRoomLink = async () => {
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
     }
+    remoteStreamRef.current = null;
 
     pendingCandidatesRef.current = [];
 
